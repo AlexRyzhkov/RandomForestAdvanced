@@ -34,7 +34,7 @@ class RandomForestAdvanced:
 		elif self.type == 'reg':
 			self.model = RFA_Regressor(options)
 		else:
-			raise NameError("Unknown type value in command line arguments")
+			raise NameError("Unknown type value in command line arguments!!!")
 
 	def read_data(self):
 		self.train_data = pd.read_csv(self.trainfile)

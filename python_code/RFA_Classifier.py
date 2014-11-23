@@ -39,7 +39,7 @@ class RFA_Classifier:
 	def get_feat_and_border(N, rho, X, Y):
 		feat_num = nprd.randint(N, size = rho)
 		X_new = X[:, feat_num]
-		## WRITE CODE HERE
+		## WRITE YOUR CODE HERE
 		return feat_num, coefs
 
 

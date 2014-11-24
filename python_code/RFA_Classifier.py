@@ -2,9 +2,10 @@ import numpy as np
 import numpy.random as nprd
 import pandas as pd
 import logging
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import SGDClassifier
 import matplotlib.pyplot as plt
 import networkx as nx
+from copy import deepcopy
 reload(logging)
 logging.basicConfig(format = u'[%(asctime)s]  %(message)s', level = logging.INFO)
 
@@ -23,15 +24,15 @@ class RFA_Classifier:
 	# ==========================================================================
 
 	def plot_tree(self, idx):
-		pos = nx.graphviz_layout(G,prog='dot')
-		nx.draw(self.trees[idx],pos,with_labels=False,arrows=False)
+		nx.write_dot(self.trees[idx],'test.dot')
+		pos = nx.graphviz_layout(self.trees[idx],prog='dot')
+		nx.draw(self.trees[idx],pos,with_labels=True)
 		plt.show()
 
 	# ==========================================================================
 
 	def sample_data_for_tree(self, X, y):
 		idx = nprd.randint(len(y), size = len(y))
-		logging.info("{}".format(type(X)))
 		X_new = X[idx, :]
 		Y_new = y[idx]
 		return X_new, Y_new
@@ -41,20 +42,19 @@ class RFA_Classifier:
 	def get_feat_and_border(self, N, rho, X, Y):
 		feat_num = nprd.randint(N, size = rho)
 		X_new = X[:, feat_num]
-		clf = LinearRegression()
-		clf.fit(X_new, y, n_jobs = -1)
-		return feat_num, clf
+		#clf = SGDClassifier(alpha = 1e-3, n_jobs = -1)
+		return feat_num, np.mean(X_new) #clf
 
 	# ==========================================================================
 
 	def split_data(self, div, X, Y):
 		X_new = X[:, div[0]]
-		clf = div[1]
-		spl = (np.round(clf.decision_function(X_new)) == 1.)
-		
+		bord = div[1]
+		spl = (X_new < bord).T[0]
 		nspl = (1 - spl == 1)
-		X_ar = [X_new[nspl, :], ]
-		Y_ar = [Y[nspl], Y[spl]]
+
+		X_ar = [X_new[nspl], X_new[spl]]
+		Y_ar = [Y[nspl], Y[spl]]	
 
 		return X_ar, Y_ar
 
@@ -63,28 +63,47 @@ class RFA_Classifier:
 	def tree_construct(self, cnt, Tree, X, Y, options):
 		logging.info("{}, {}, {}".format(cnt, X.shape, len(Y)))
 		maxLeafSize = options['maxLeafSize']
-		Nclass = option['Nclass']
+		Nclass = options['Nclass']
 		counts = np.zeros((Nclass, 1))
 		for i in xrange(Nclass):
 			counts[i] = sum(Y == i)
 
-		if (X.shape[0] <= maxLeafSize or any(counts == len(Y))):
+		if (len(Y) <= maxLeafSize or any(counts == len(Y))):
 			data = []
 			for i in xrange(Nclass):
 				data.append(counts[i] / len(Y))
 			Tree.node[cnt]['cls'] = data
 			logging.info("{} exit".format(cnt))
-			return (Tree, cnt + 1)
+			cnt = cnt + 1
+			return cnt
 
 		N = X.shape[1]
-		div = self.get_feat_and_border(N, options['rho'], X, Y)
+		fl = False
+		for i in xrange(10):
+			div = self.get_feat_and_border(N, options['rho'], X, Y)
+			X_ar, Y_ar = self.split_data(div, X, Y)
+			if (len(Y_ar[0]) != 0 and len(Y_ar[1]) != 0):
+				fl = True
+				break
+
+		if not(fl):
+			data = []
+			for i in xrange(Nclass):
+				data.append(counts[i] / len(Y))
+			Tree.node[cnt]['cls'] = data
+			logging.info("{} exit".format(cnt))
+			cnt = cnt + 1
+			return cnt
+
 		Tree.node[cnt]['div'] = div
-		X_ar, Y_ar = self.split_data(div, X, Y)
+		
 		cnt_new = cnt
-		for (X_i, Y_i) in xzip(X_ar, Y_ar):
+		for (X_i, Y_i) in zip(X_ar, Y_ar):
 			Tree.add_edge(cnt, cnt_new + 1)
-			Tree, cnt_new = self.tree_construct(cnt_new + 1, Tree, X_i, Y_i, optons)
-		return (Tree, cnt)
+			logging.info("{} --- {}".format(cnt, cnt_new + 1))
+			cnt_new = cnt_new + 1
+			cnt_new = self.tree_construct(cnt_new, Tree, X_i, Y_i, options)
+		return cnt_new
 
 
 	# ==========================================================================
@@ -104,7 +123,7 @@ class RFA_Classifier:
 			X, Y = self.sample_data_for_tree(Xtrain, Ytrain)
 			Tree = nx.DiGraph()
 			Tree.add_node(0)
-			Tree, cnt = self.tree_construct(0, Tree, X, Y, optons)
+			self.tree_construct(0, Tree, X, Y, options)
 			trees_array.append(Tree)
 
 		self.trees = trees_array

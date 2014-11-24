@@ -2,6 +2,9 @@ import numpy as np
 import numpy.random as nprd
 import pandas as pd
 import logging
+from sklearn.linear_model import LinearRegression
+import matplotlib.pyplot as plt
+import networkx as nx
 reload(logging)
 logging.basicConfig(format = u'[%(asctime)s]  %(message)s', level = logging.INFO)
 
@@ -15,37 +18,50 @@ class RFA_Classifier:
 		self.outputfile = options['o']
 		self.rho = int(options['rho'])
 		self.maxLeafSize = 20
-		print('Classifier created')
+		logging.info('Classifier created')
 
 	# ==========================================================================
 
-	def sample_data_for_tree(X, y):
+	def plot_tree(self, idx):
+		pos = nx.graphviz_layout(G,prog='dot')
+		nx.draw(self.trees[idx],pos,with_labels=False,arrows=False)
+		plt.show()
+
+	# ==========================================================================
+
+	def sample_data_for_tree(self, X, y):
 		idx = nprd.randint(len(y), size = len(y))
+		logging.info("{}".format(type(X)))
 		X_new = X[idx, :]
 		Y_new = y[idx]
 		return X_new, Y_new
 
 	# ==========================================================================
 
-	def sample_data_for_tree(X, y):
-		idx = nprd.randint(len(y), size = len(y))
-		X_new = X[idx, :]
-		Y_new = y[idx]
-		return X_new, Y_new
-
-
-	# ==========================================================================
-
-	def get_feat_and_border(N, rho, X, Y):
+	def get_feat_and_border(self, N, rho, X, Y):
 		feat_num = nprd.randint(N, size = rho)
 		X_new = X[:, feat_num]
-		## WRITE YOUR CODE HERE
-		return feat_num, coefs
-
+		clf = LinearRegression()
+		clf.fit(X_new, y, n_jobs = -1)
+		return feat_num, clf
 
 	# ==========================================================================
 
-	def tree_construct(cnt, Tree, X, Y, options):
+	def split_data(self, div, X, Y):
+		X_new = X[:, div[0]]
+		clf = div[1]
+		spl = (np.round(clf.decision_function(X_new)) == 1.)
+		
+		nspl = (1 - spl == 1)
+		X_ar = [X_new[nspl, :], ]
+		Y_ar = [Y[nspl], Y[spl]]
+
+		return X_ar, Y_ar
+
+	# ==========================================================================
+
+	def tree_construct(self, cnt, Tree, X, Y, options):
+		logging.info("{}, {}, {}".format(cnt, X.shape, len(Y)))
 		maxLeafSize = options['maxLeafSize']
 		Nclass = option['Nclass']
 		counts = np.zeros((Nclass, 1))
@@ -57,16 +73,17 @@ class RFA_Classifier:
 			for i in xrange(Nclass):
 				data.append(counts[i] / len(Y))
 			Tree.node[cnt]['cls'] = data
+			logging.info("{} exit".format(cnt))
 			return (Tree, cnt + 1)
 
 		N = X.shape[1]
-		div = [el for el in get_feat_and_border(N, options['rho'], X, Y)]
+		div = self.get_feat_and_border(N, options['rho'], X, Y)
 		Tree.node[cnt]['div'] = div
-		X_ar, Y_ar = split_data(div, X, Y)
+		X_ar, Y_ar = self.split_data(div, X, Y)
 		cnt_new = cnt
-		for (X_i, Y_i) in zip(X_ar, Y_ar):
+		for (X_i, Y_i) in xzip(X_ar, Y_ar):
 			Tree.add_edge(cnt, cnt_new + 1)
-			Tree, cnt_new = tree_construct(cnt_new + 1, Tree, X_i, Y_i, optons)
+			Tree, cnt_new = self.tree_construct(cnt_new + 1, Tree, X_i, Y_i, optons)
 		return (Tree, cnt)
 
 
@@ -84,12 +101,12 @@ class RFA_Classifier:
 			'rho': self.rho
 		}
 		for i in range(self.ntrees):
-			X, Y = sample_data_for_tree(X_train, Y_train)
+			X, Y = self.sample_data_for_tree(Xtrain, Ytrain)
 			Tree = nx.DiGraph()
 			Tree.add_node(0)
-			Tree, cnt = tree_construct(0, Tree, X, Y, optons)
+			Tree, cnt = self.tree_construct(0, Tree, X, Y, optons)
 			trees_array.append(Tree)
 
-		self.trees = "aaa bbb"
+		self.trees = trees_array
 		return self
 	# ==========================================================================		

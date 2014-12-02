@@ -31,6 +31,46 @@ class RFA_Classifier:
 
 	# ==========================================================================
 
+	def getEntropy(self, D):
+	    L = D.size
+	    valueList = list(np.unique(D))
+	    numVals = len(valueList)
+	    countVals = np.zeros(numVals)
+	    Ent = 0
+	    for idx, val in enumerate(valueList):
+	        countVals[idx] = np.count_nonzero(D==val)
+	        Ent += countVals[idx]*1.0/L*np.log2(L*1.0/countVals[idx])
+	    return Ent
+
+
+	def getMaxInfoGain(self, D,X,feat=0):
+		EntWithoutSplit=self.getEntropy(D)
+		feature=X[:,feat]
+		logging.info("feature = {}".format(feature.shape))
+		L=len(feature)
+		valueList=list(np.unique(feature))
+		splits=np.diff(valueList)/2.0+valueList[:-1]
+		maxGain=0
+		bestSplit=0
+		bestPart1=[]
+		bestPart2=[]
+		for split in splits:
+		    Part1idx=np.argwhere(feature<=split)
+		    Part2idx=np.argwhere(feature>split)
+		    E1=self.getEntropy(D[Part1idx[:,0]])
+		    l1=len(Part1idx)
+		    E2=self.getEntropy(D[Part2idx[:,0]])
+		    l2=len(Part2idx)
+		    Gain=EntWithoutSplit-(l1*1.0/L*E1+l2*1.0/L*E2)
+		    if Gain >= maxGain:
+		        maxGain=Gain
+		        bestSplit=split
+		        bestPart1=Part1idx
+		        bestPart2=Part2idx
+		return maxGain,bestSplit,bestPart1,bestPart2
+
+    # ==========================================================================
+
 	def sample_data_for_tree(self, X, y):
 		idx = nprd.randint(len(y), size = len(y))
 		X_new = X[idx, :]
@@ -41,21 +81,22 @@ class RFA_Classifier:
 
 	def get_feat_and_border(self, N, rho, X, Y):
 		feat_num = nprd.randint(N, size = rho)
-		X_new = X[:, feat_num]
-		#clf = SGDClassifier(alpha = 1e-3, n_jobs = -1)
-		return feat_num, np.mean(X_new) #clf
+		maxGain,bestSplit,bestPart1,bestPart2 = self.getMaxInfoGain(Y,X,feat=feat_num)
+		logging.info("maxGain = {}".format(maxGain))
+		logging.info("bestSplit = {}".format(bestSplit))
+		logging.info("bestPart1 = {}".format(len(bestPart1)))
+		logging.info("bestPart2 = {}".format(len(bestPart2)))
+		if len(bestPart1) == 0:
+			return -1, 0, 0, 0
+		return feat_num, bestSplit, bestPart1, bestPart2 
 
 	# ==========================================================================
 
-	def split_data(self, div, X, Y):
-		X_new = X[:, div[0]]
-		bord = div[1]
-		spl = (X_new < bord).T[0]
-		nspl = (1 - spl == 1)
-
-		X_ar = [X_new[nspl], X_new[spl]]
-		Y_ar = [Y[nspl], Y[spl]]	
-
+	def split_data(self, bestPart1, bestPart2, X, Y):
+		bestPart1 = bestPart1[:, 0]
+		bestPart2 = bestPart2[:, 0]
+		X_ar = [X[bestPart1, :], X[bestPart2, :]]
+		Y_ar = [Y[bestPart1], Y[bestPart2]]	
 		return X_ar, Y_ar
 
 	# ==========================================================================
@@ -78,15 +119,9 @@ class RFA_Classifier:
 			return cnt
 
 		N = X.shape[1]
-		fl = False
-		for i in xrange(10):
-			div = self.get_feat_and_border(N, options['rho'], X, Y)
-			X_ar, Y_ar = self.split_data(div, X, Y)
-			if (len(Y_ar[0]) != 0 and len(Y_ar[1]) != 0):
-				fl = True
-				break
 
-		if not(fl):
+		feat_num, bestSplit, bestPart1, bestPart2 = self.get_feat_and_border(N, options['rho'], X, Y)
+		if feat_num == -1:
 			data = []
 			for i in xrange(Nclass):
 				data.append(counts[i] / len(Y))
@@ -94,6 +129,8 @@ class RFA_Classifier:
 			logging.info("{} exit".format(cnt))
 			cnt = cnt + 1
 			return cnt
+		div = [feat_num, bestSplit]
+		X_ar, Y_ar = self.split_data(bestPart1, bestPart2, X, Y)
 
 		Tree.node[cnt]['div'] = div
 		
@@ -128,4 +165,43 @@ class RFA_Classifier:
 
 		self.trees = trees_array
 		return self
-	# ==========================================================================		
+
+	# ==========================================================================
+
+	def TreePredict(self, tree, X_test):
+		preds = np.zeros(X_test.shape[0])
+
+		#logging.info("nodes = {}".format(tree.nodes()))
+
+		for i in xrange(len(preds)):
+			pos = 0
+			while (True):
+				try:
+					div = tree.node[pos]['div']
+				except:
+					break
+				if X_test[i, div[0]] < div[1]:
+					pos = tree[pos].keys()[0]
+				else:
+					pos = tree[pos].keys()[1]
+
+			if len(tree[pos].keys()) != 0:
+				logging.info("BUG!!!!!!!!!!!")
+
+			preds[i] = np.argmax(tree.node[pos]['cls'])
+			#logging.info("{} ---> {}, {}".format(i, pos, preds[i]))
+
+		return preds		
+
+	def predict(self, X_test):
+		X = np.array(X_test)
+
+		preds = np.zeros(X.shape[0])
+
+		for (p, tree) in enumerate(self.trees):
+			preds = preds + self.TreePredict(tree, X)
+			logging.info("Tree {} complete!".format(p))
+
+		preds = preds / self.ntrees
+
+		return list(preds)

@@ -55,10 +55,11 @@ class RandomForestAdvanced:
 	def fit_and_test(self):
 		self.read_data()
 		self.model.fit(self.train_data, self.train_labels)
-		self.model.plot_tree(0)
-
-		# self.predictions = self.model.predict(self.test_data)
-		# self.check_results(self.train_data['Y'])
+		#self.model.plot_tree(0)
+		
+		self.predictions = self.model.predict(self.test_data)
+		logging.info("{}".format(self.predictions))
+		#self.check_results(self.train_data['Y'])
 		# self.save_predictions()
 		
 

@@ -6,6 +6,7 @@ import getopt
 import pandas as pd
 import numpy as np
 import logging
+from sklearn.ensemble import RandomForestClassifier
 reload(logging)
 logging.basicConfig(format = u'[%(asctime)s]  %(message)s', level = logging.INFO)
 
@@ -39,18 +40,25 @@ class RandomForestAdvanced:
 	def read_data(self):
 		self.train_data = pd.read_csv(self.trainfile)
 		#print(self.train_data)
-		self.train_labels = self.train_data['Y'].values
+		self.train_labels = np.array(self.train_data['Y'].values)
+		print(self.train_labels)
 		self.train_data.drop('Y', axis=1, inplace=True)
 		self.test_data = pd.read_csv(self.testfile)
 		return self
 
-	def check_results(correct_answers):
-		print(mse(self.predictions, correct_answers))
+	def check_results(self, correct_answers):
+		logging.info("ERROR = {}".format(mse(self.predictions, correct_answers)))
 
-
-	def save_predictions():
+	def save_predictions(self):
 		preds = pd.DataFrame(self.predictions)
-		preds.to_csv(self.outputfile, index = false)
+		preds.to_csv(self.outputfile, index = False)
+
+	def compare_with_RF(self):
+		clf = RandomForestClassifier(n_estimators = 20, criterion = "entropy", min_samples_split = 10)
+		clf.fit(self.train_data, self.train_labels)
+		preds = clf.predict(self.test_data)
+		logging.info("ERROR_RF = {}".format(mse(preds, self.train_labels)))
+
 
 	def fit_and_test(self):
 		self.read_data()
@@ -58,9 +66,10 @@ class RandomForestAdvanced:
 		#self.model.plot_tree(0)
 		
 		self.predictions = self.model.predict(self.test_data)
-		logging.info("{}".format(self.predictions))
-		#self.check_results(self.train_data['Y'])
-		# self.save_predictions()
+		#logging.info("{}".format(self.predictions))
+		self.check_results(self.train_labels)
+		self.compare_with_RF()
+		self.save_predictions()
 		
 
 	

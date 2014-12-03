@@ -19,6 +19,7 @@ class RFA_Classifier:
 		self.outputfile = options['o']
 		self.rho = int(options['rho'])
 		self.maxLeafSize = 10
+		self.labs = {}
 		logging.info('Classifier created')
 
 	# ==========================================================================
@@ -26,13 +27,13 @@ class RFA_Classifier:
 	def plot_tree(self, idx):
 		nx.write_dot(self.trees[idx],'test.dot')
 		pos = nx.graphviz_layout(self.trees[idx],prog='dot')
-		nx.draw(self.trees[idx],pos,with_labels=True)
+		nx.draw(self.trees[idx],pos,with_labels=False)
 		plt.show()
 
 	# ==========================================================================
 
 	def getEntropy(self, D):
-	    L = D.size
+	    L = len(D)
 	    valueList = list(np.unique(D))
 	    numVals = len(valueList)
 	    countVals = np.zeros(numVals)
@@ -43,13 +44,13 @@ class RFA_Classifier:
 	    return Ent
 
 
-	def getMaxInfoGain(self, D,X,feat=0):
+	def getMaxInfoGain(self, D,X,feat):
 		EntWithoutSplit=self.getEntropy(D)
 		feature=X[:,feat]
 		L=len(feature)
 		mx = max(feature)
 		mn = min(feature)
-		splits=np.linspace(mn,mx, num = 100)
+		splits=np.linspace(mn,mx, num = 30)
 		maxGain=0
 		bestSplit=0
 		bestPart1=[]
@@ -100,6 +101,7 @@ class RFA_Classifier:
 
 	def tree_construct(self, cnt, Tree, X, Y, options):
 		#logging.info("{}, {}, {}".format(cnt, X.shape, len(Y)))
+		self.labs[cnt] = str(len(Y))
 		maxLeafSize = options['maxLeafSize']
 		Nclass = options['Nclass']
 		counts = np.zeros(Nclass)
@@ -131,6 +133,25 @@ class RFA_Classifier:
 
 
 	# ==========================================================================
+	def generate_data_cv(X, Y, ind, N_folds):
+		# CODE HERE!!!!
+		return Xtrain, Ytrain, Xtest, Ytest
+
+
+	def cross_validation(self, X_tr, Y_tr, N_folds):
+		X = np.array(X_tr)
+		Y = np.array(Y_tr)
+		results = []
+		for i in xrange(N_folds):
+			Xtrain, Ytrain, Xtest, Ytest = generate_data_cv(X, Y, i, N_folds)
+			self.fit(Xtrain, Ytrain)
+			preds = self.model.predict(Xtest)
+			results.append(self.check_results(Ytest))
+
+		logging.info("Results = {}".format(results))
+		logging.info("MeanError = {}".format(np.mean(results)))
+
+	# ==========================================================================
 
 	def fit(self, X_tr, Y_tr):
 		Xtrain = np.array(X_tr)
@@ -145,14 +166,19 @@ class RFA_Classifier:
 		}
 		for i in range(self.ntrees):
 			X, Y = self.sample_data_for_tree(Xtrain, Ytrain)
+			logging.info("{},     {}".format(X.shape, Y.shape))
 			Tree = nx.DiGraph()
 			Tree.add_node(0)
 			self.tree_construct(0, Tree, X, Y, options)
 			trees_array.append(Tree)
 			logging.info("Fit tree {} complete!".format(i))
-			# pos = nx.graphviz_layout(Tree,prog='dot')
-			# nx.draw(Tree,pos,with_labels=True)
+			pos = nx.graphviz_layout(Tree, prog='dot')
+
+			# nx.draw_networkx_nodes(Tree, pos)
+			# nx.draw_networkx_edges(Tree, pos)
+			# nx.draw_networkx_labels(Tree, pos, labels = self.labs)
 			# plt.show()
+			self.labs = {}
 
 		self.trees = trees_array
 		return self
@@ -172,12 +198,12 @@ class RFA_Classifier:
 				except:
 					break
 				if X_test[i, div[0]] <= div[1]:
-					pos = tree[pos].keys()[0]
+					pos = min(tree[pos].keys())
 				else:
-					pos = tree[pos].keys()[1]
+					pos = max(tree[pos].keys())
 
-			logging.info("{}".format(tree.node[pos]['cls']))
-			preds[i] = argmax(tree.node[pos]['cls'])
+			#logging.info("{}".format(tree.node[pos]['cls']))
+			preds[i] = tree.node[pos]['cls'][1]
 			#logging.info("{} ---> {}, {}".format(i, pos, preds[i]))
 
 		return preds		

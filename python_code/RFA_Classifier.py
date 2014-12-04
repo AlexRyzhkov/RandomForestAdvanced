@@ -1,8 +1,10 @@
 import numpy as np
 import numpy.random as nprd
 import pandas as pd
+from metrics import mse
 import logging
 from sklearn.linear_model import SGDClassifier
+from sklearn.ensemble import RandomForestClassifier
 import matplotlib.pyplot as plt
 import networkx as nx
 from itertools import izip
@@ -34,7 +36,7 @@ class RFA_Classifier:
 
 	def getEntropy(self, D):
 	    L = len(D)
-	    valueList = list(np.unique(D))
+	    valueList = np.unique(D)
 	    numVals = len(valueList)
 	    countVals = np.zeros(numVals)
 	    Ent = 0
@@ -48,9 +50,8 @@ class RFA_Classifier:
 		EntWithoutSplit=self.getEntropy(D)
 		feature=X[:,feat]
 		L=len(feature)
-		mx = max(feature)
-		mn = min(feature)
-		splits=np.linspace(mn,mx, num = 30)
+		valueList=np.unique(feature)
+		splits=np.diff(valueList)/2.0+valueList[:-1]
 		maxGain=0
 		bestSplit=0
 		bestPart1=[]
@@ -100,8 +101,6 @@ class RFA_Classifier:
 	# ==========================================================================
 
 	def tree_construct(self, cnt, Tree, X, Y, options):
-		#logging.info("{}, {}, {}".format(cnt, X.shape, len(Y)))
-		self.labs[cnt] = str(len(Y))
 		maxLeafSize = options['maxLeafSize']
 		Nclass = options['Nclass']
 		counts = np.zeros(Nclass)
@@ -126,15 +125,36 @@ class RFA_Classifier:
 		cnt_new = cnt
 		for (X_i, Y_i) in zip(X_ar, Y_ar):
 			Tree.add_edge(cnt, cnt_new + 1)
-			#logging.info("{} --- {}".format(cnt, cnt_new + 1))
 			cnt_new = cnt_new + 1
 			cnt_new = self.tree_construct(cnt_new, Tree, X_i, Y_i, options)
 		return cnt_new
 
 
 	# ==========================================================================
-	def generate_data_cv(X, Y, ind, N_folds):
-		# CODE HERE!!!!
+	def generate_data_cv(self, X, Y, ind, N_folds):
+		sz = int(len(Y) / N_folds)
+		logging.info("SZ = {}".format(sz))
+		if (ind == 0):
+			Xtrain = X[sz:len(Y), :]
+			Ytrain = Y[sz:len(Y)]
+			Xtest = X[0:sz, :]
+			Ytest = Y[0:sz]
+		elif (ind + 1 == N_folds):
+			Xtrain = X[0:sz * ind, :]
+			Ytrain = Y[0:sz * ind]
+			Xtest = X[sz*ind:len(Y), :]
+			Ytest = Y[sz*ind:len(Y)]
+		else:
+			Xtrain_1 = X[0:sz * ind, :]
+			Ytrain_1 = Y[0:sz * ind]
+			Xtrain_2 = X[sz*(ind + 1):len(Y), :]
+			Ytrain_2 = Y[sz*(ind + 1):len(Y)]
+			Xtrain = np.vstack((Xtrain_1, Xtrain_2))
+			Ytrain = np.hstack((Ytrain_1, Ytrain_2))
+			Xtest = X[sz*ind:sz*(ind + 1), :]
+			Ytest = Y[sz*ind:sz*(ind + 1)]
+
+		logging.info("SIZES = {}, {}, {}, {}".format(Xtrain.shape, Ytrain.shape, Xtest.shape, Ytest.shape))
 		return Xtrain, Ytrain, Xtest, Ytest
 
 
@@ -143,10 +163,16 @@ class RFA_Classifier:
 		Y = np.array(Y_tr)
 		results = []
 		for i in xrange(N_folds):
-			Xtrain, Ytrain, Xtest, Ytest = generate_data_cv(X, Y, i, N_folds)
+			Xtrain, Ytrain, Xtest, Ytest = self.generate_data_cv(X, Y, i, N_folds)
 			self.fit(Xtrain, Ytrain)
-			preds = self.model.predict(Xtest)
-			results.append(self.check_results(Ytest))
+			preds = self.predict(Xtest)
+			results.append(mse(preds, Ytest))
+			logging.info("CUR_Result = {}".format(results[i]))
+			clf = RandomForestClassifier(n_estimators = 20, criterion = "entropy", min_samples_split = 10)
+			clf.fit(Xtrain, Ytrain)
+			preds = clf.predict_proba(Xtest)[:, 1]
+			logging.info("ERROR_RF = {}".format(mse(preds, Ytest)))
+
 
 		logging.info("Results = {}".format(results))
 		logging.info("MeanError = {}".format(np.mean(results)))
@@ -174,12 +200,6 @@ class RFA_Classifier:
 			logging.info("Fit tree {} complete!".format(i))
 			pos = nx.graphviz_layout(Tree, prog='dot')
 
-			# nx.draw_networkx_nodes(Tree, pos)
-			# nx.draw_networkx_edges(Tree, pos)
-			# nx.draw_networkx_labels(Tree, pos, labels = self.labs)
-			# plt.show()
-			self.labs = {}
-
 		self.trees = trees_array
 		return self
 
@@ -188,7 +208,6 @@ class RFA_Classifier:
 	def TreePredict(self, tree, X_test):
 		preds = np.zeros(X_test.shape[0])
 		argmax = lambda array: max(izip(array, xrange(len(array))))[1]
-		#logging.info("nodes = {}".format(tree.nodes()))
 
 		for i in xrange(preds.shape[0]):
 			pos = 0
@@ -202,15 +221,11 @@ class RFA_Classifier:
 				else:
 					pos = max(tree[pos].keys())
 
-			#logging.info("{}".format(tree.node[pos]['cls']))
 			preds[i] = tree.node[pos]['cls'][1]
-			#logging.info("{} ---> {}, {}".format(i, pos, preds[i]))
-
 		return preds		
 
 	def predict(self, X_test):
 		X = np.array(X_test)
-
 		preds = np.zeros(X.shape[0])
 
 		for (p, tree) in enumerate(self.trees):
@@ -218,6 +233,5 @@ class RFA_Classifier:
 			logging.info("Predict tree {} complete!".format(p))
 
 		preds = preds / self.ntrees
-
 		return preds
 

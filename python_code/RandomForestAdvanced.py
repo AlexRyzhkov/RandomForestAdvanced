@@ -65,7 +65,7 @@ class RandomForestAdvanced:
 		#self.model.fit(self.train_data, self.train_labels)
 		#self.model.plot_tree(0)
 
-		self.model.cross_validation(self.train_data, self.train_labels, 2)
+		self.model.cross_validation(self.train_data, self.train_labels, 10)
 
 		#self.predictions = self.model.predict(self.test_data)
 		#self.check_results(self.train_labels)
